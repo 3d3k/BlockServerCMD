@@ -39,13 +39,26 @@ jobs:
         gradle-version: 9.7.1
 
     # 直接用 gradle 命令，不再用 ./gradlew
+    # set -o pipefail：让管道中 gradle 失败时整体返回失败码，避免 tee 掩盖错误
     # 去掉 --info 避免日志被 GitHub 截断
     # 加 --no-daemon，CI 环境不需要守护进程
     - name: Build with Gradle
       run: |
+        set -o pipefail
         touch build.log
         gradle build --stacktrace --no-daemon 2>&1 | tee build.log
         echo "BUILD_LOG=build.log" >> $GITHUB_ENV
+
+    # 诊断：看看 build/ 里到底产出了什么
+    - name: List build outputs
+      if: always()
+      run: |
+        echo "===== .jar files under build/ ====="
+        find build -type f -name "*.jar" 2>/dev/null || echo "No .jar files found"
+        echo "===== build/libs/ listing ====="
+        ls -l build/libs/ 2>/dev/null || echo "build/libs/ not found"
+        echo "===== build/ top-level ====="
+        ls -l build/ 2>/dev/null || echo "build/ not found"
 
     # 构建成功时上传 jar 产物
     - name: Upload Artifact
