@@ -15,7 +15,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # 获取完整历史（可能影响 Gradle Wrapper）
+        fetch-depth: 0
 
     - name: Pre-Build Checks
       run: |
@@ -23,8 +23,6 @@ jobs:
         echo "Workspace: $(pwd)"
         echo "--- Directory Listing ---"
         ls -la
-        echo "--- Gradle Wrapper ---"
-        ls -l gradle* || echo "No gradle files found"
         echo "--- Build Files ---"
         ls -l build.gradle* settings.gradle* || echo "No build files found"
 
@@ -33,33 +31,20 @@ jobs:
       with:
         java-version: '21'
         distribution: 'temurin'
-        cache: 'gradle'
 
-    # 改动 1：不再临时生成 wrapper。
-    # Wrapper 应当提交到仓库，否则 CI 用的 Gradle 版本会与本地/生产不一致。
-    # 原来的 fallback `gradle wrapper --gradle-version 8.5` 有两个问题：
-    #   a) runner 上不一定有系统级 gradle 命令
-    #   b) 8.5 与项目实际的 9.7.1 不一致
-    - name: Verify Gradle Wrapper
-      run: |
-        if [ ! -f "gradlew" ]; then
-          echo "::error::gradlew file missing! Please commit the Gradle wrapper to the repository."
-          exit 1
-        fi
+    # 用官方 action 安装指定版本的 Gradle，不需要仓库里有 gradlew
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v4
+      with:
+        gradle-version: 9.7.1
 
-        chmod +x gradlew
-        echo "Gradle Wrapper version:"
-        ./gradlew --version
-
-    # 改动 2：构建命令
-    #   - 去掉 --info：CI 下日志量爆炸，GitHub 会截断，导致看不到真正的错误
-    #   - 加上 --no-daemon：CI 环境是一次性的，Daemon 没有复用收益，反而增加
-    #     内存占用和启动失败风险
-    #   - 保留 --stacktrace：能看到真正的异常堆栈
+    # 直接用 gradle 命令，不再用 ./gradlew
+    # 去掉 --info 避免日志被 GitHub 截断
+    # 加 --no-daemon，CI 环境不需要守护进程
     - name: Build with Gradle
       run: |
         touch build.log
-        ./gradlew build --stacktrace --no-daemon 2>&1 | tee build.log
+        gradle build --stacktrace --no-daemon 2>&1 | tee build.log
         echo "BUILD_LOG=build.log" >> $GITHUB_ENV
 
     - name: Upload Artifact
@@ -77,14 +62,12 @@ jobs:
         name: build-log
         path: ${{ env.BUILD_LOG }}
 
-    # 改动 3：诊断步骤也加上 --no-daemon，
-    # 避免它去启动一个已经失败的 Daemon 而卡住或再次报错
     - name: Failure Diagnostics
       if: failure()
       run: |
         echo "===== FINAL DIAGNOSTICS ====="
         echo "Java: $(java -version 2>&1)"
         echo "Gradle:"
-        ./gradlew --version --no-daemon || true
+        gradle --version --no-daemon || true
         echo "Log content:"
         cat build.log || echo "No log file"
