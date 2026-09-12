@@ -47,6 +47,7 @@ jobs:
         gradle build --stacktrace --no-daemon 2>&1 | tee build.log
         echo "BUILD_LOG=build.log" >> $GITHUB_ENV
 
+    # 构建成功时上传 jar 产物
     - name: Upload Artifact
       if: success()
       uses: actions/upload-artifact@v4
